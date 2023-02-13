@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 from threading import Thread
-import serial
+import serial.tools.list_ports
 import time
 import collections
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import struct
 import pandas as pd
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 
 class serialPlot:
     def __init__(self, serialPort = '/dev/ttyUSB0', serialBaud = 38400, plotLength = 100, dataNumBytes = 2):

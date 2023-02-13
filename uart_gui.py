@@ -2,11 +2,11 @@ from tkinter import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-import serial
+import serial.tools.list_ports
 import time
 import sys
 import glob
-
+import pandas as pd
 
 #global varible
 USART_VARIBLE = {
@@ -86,60 +86,59 @@ class Usart:
         send_btn2.grid(row=2,column=2)
 
         # ########## ================ #### SETTING FRAME #### ================ ########### # 
-        baudVar = IntVar()
-        portVar = StringVar()
-        parityVar = StringVar()
-        databitsVar = IntVar()
-        stopbitVar = IntVar()
+        self.baudVar = IntVar()
+        self.portVar = StringVar()
+        self.parityVar = StringVar()
+        self.databitsVar = IntVar()
+        self.stopbitVar = IntVar()
         # ================  Baudrate ================ #
-        baudVar.set(USART_VARIBLE['BAUDRATE'][1])
+        self.baudVar.set(USART_VARIBLE['BAUDRATE'][1])
         Label(self.settingframe,text='Baudrate:').grid(row=0,column=0,sticky="W")
-        self.baudDrop = OptionMenu(self.settingframe,baudVar,*USART_VARIBLE['BAUDRATE'])
+        self.baudDrop = OptionMenu(self.settingframe,self.baudVar,*USART_VARIBLE['BAUDRATE'])
         self.baudDrop.config(width=SIZE['S20'])
         self.baudDrop.grid(row=0,column=1)
         # ================  Port ================ #
-        portVar.set(USART_VARIBLE['PORT'][0])
+        self.portVar.set(USART_VARIBLE['PORT'][0])
         Label(self.settingframe,text='Port:').grid(row=1,column=0,sticky="W")
-        self.portDrop = OptionMenu(self.settingframe,portVar,*USART_VARIBLE['PORT'])
+        self.portDrop = OptionMenu(self.settingframe,self.portVar,*USART_VARIBLE['PORT'])
         self.portDrop.config(width=SIZE['S20'])
         self.portDrop.grid(row=1,column=1)
         # ================  Parity ================ #
-        parityVar.set(USART_VARIBLE['PARITY'][0])
+        self.parityVar.set(USART_VARIBLE['PARITY'][0])
         Label(self.settingframe,text='Parity:').grid(row=2,column=0,sticky="W")
-        self.parityDrop = OptionMenu(self.settingframe,parityVar,*USART_VARIBLE['PARITY'])
+        self.parityDrop = OptionMenu(self.settingframe,self.parityVar,*USART_VARIBLE['PARITY'])
         self.parityDrop.config(width=SIZE['S20'])
         self.parityDrop.grid(row=2,column=1)
         # ================  Databits ================ #
-        databitsVar.set(USART_VARIBLE['DATABITS'][0])
+        self.databitsVar.set(USART_VARIBLE['DATABITS'][0])
         Label(self.settingframe,text='Data bits:').grid(row=3,column=0,sticky="W")
-        self.databitsDrop = OptionMenu(self.settingframe,databitsVar,*USART_VARIBLE['DATABITS'])
+        self.databitsDrop = OptionMenu(self.settingframe,self.databitsVar,*USART_VARIBLE['DATABITS'])
         self.databitsDrop.config(width=SIZE['S20'])
         self.databitsDrop.grid(row=3,column=1)
         # ================  Stopbit ================ #
-        stopbitVar.set(USART_VARIBLE['STOPBIT'][0])
+        self.stopbitVar.set(USART_VARIBLE['STOPBIT'][0])
         Label(self.settingframe,text='Stop bits:').grid(row=4,column=0,sticky="W")
-        self.stopbitDrop = OptionMenu(self.settingframe,stopbitVar,*USART_VARIBLE['STOPBIT'])
+        self.stopbitDrop = OptionMenu(self.settingframe,self.stopbitVar,*USART_VARIBLE['STOPBIT'])
         self.stopbitDrop.config(width=SIZE['S20'])
         self.stopbitDrop.grid(row=4,column=1)
 
-        # ================  Refresh ================ #
-
+        # ================  Refresh ================ #      
         self.refresh_btn = Button(self.settingframe,text='Refresh',width=SIZE['S10'],
             bg='blue',
             fg='yellow',
-            )
+            command=self.refreshBtn)
         self.refresh_btn.grid(row=0,column=2)
         # ================  Connect ================ #
         self.connect_btn = Button(self.settingframe,text='Connect',width=SIZE['S10'],
             bg='green',
             fg='yellow',
-            command=lambda: self.connectBtn(self.screen,[baudVar.get(),portVar.get(),parityVar.get(),databitsVar.get(),stopbitVar.get()]))
+            command=lambda: self.connectBtn(self.screen,[self.baudVar.get(),self.portVar.get(),self.parityVar.get(),self.databitsVar.get(),self.stopbitVar.get()]))
         self.connect_btn.grid(row=1,column=2)
         # ================  Disconnect ================ #
         self.disconnect_btn = Button(self.settingframe,text='Disconnect',width=SIZE['S10'],
             bg='red',
             fg='yellow',
-            command=lambda: self.disconnectBtn(self.screen,[baudVar.get(),portVar.get(),parityVar.get(),databitsVar.get(),stopbitVar.get()]))
+            command=lambda: self.disconnectBtn(self.screen,[self.baudVar.get(),self.portVar.get(),self.parityVar.get(),self.databitsVar.get(),self.stopbitVar.get()]))
         self.disconnect_btn.grid(row=2,column=2)
 
 
@@ -188,7 +187,7 @@ class Usart:
         set_plot.grid(row=3,column=0,columnspan=2,padx=5,pady=5)    
 
         # ########## ================ #### INIT FUNCTIONS #### ================ ########## #
-
+        self.get_port()
 
     # ########## ================ #### GUI FUNCTIONS #### ================ ########## #   
     # ================  Send text to screen ================ #
@@ -198,15 +197,25 @@ class Usart:
         screen.see('end')
         screen.config(state=DISABLED)
 
+    # ================  Update option menu ================ #
+    def update_OptionMenu(self,menu,var):
+        #pass (self.option,self.optionVar)
+        menu = menu['menu']
+        menu.delete(0, "end")
+        for string in USART_VARIBLE['PORT']:
+            menu.add_command(label=string, 
+                            command=lambda value=string: var.set(value))
+
     # ================  Get ports ================ #
-    def get_port(self):        
+    def get_port(self):   
+        USART_VARIBLE['PORT'] = ['-']     
         ports = serial.tools.list_ports.comports()
-        port_list = []
         for port, desc, hwid in sorted(ports):
-                port_name = "{}: {} [{}]".format(port, desc, hwid)
-                print(port_name)
-                port_list.append(port_name)
-        return port_list
+            port_name = "{}: {}".format(port, desc)
+            #print(port_name)
+            USART_VARIBLE['PORT'].append(port_name)
+        self.update_OptionMenu(self.portDrop,self.portVar)
+        return USART_VARIBLE['PORT']
     # ================  Connection button ================ #
     def connectBtn(self,screen,data_usart):
         port = data_usart[1]
@@ -219,7 +228,8 @@ class Usart:
             except:
                 self.send_text(screen,'\nFailed to connecting to: {} at {}'.format(port,baud))
         else: self.send_text(screen,'\nPlease select port !!!')
-    # ================  Connecting UART ================ #
+        return
+    # ================  Get  UART ================ #
 
     # ================  Disconnect button ================ #
     def disconnectBtn(self,screen,data_usart):
@@ -232,7 +242,6 @@ class Usart:
     # ================  Refresh button ================ #
     def refreshBtn(self):
         self.get_port()
-
         return
 
     # ================  Send(1,2) buttons ================ #
@@ -257,13 +266,6 @@ class Usart:
         plot_screen = FigureCanvasTkAgg(figure, self.plot_screen_frame)
         plot_screen.get_tk_widget().grid(row=0,column=0)
         return 
-        
-    # ================  Get USART DATA ================ #
-    def dataToScreen(self):
-
-        return
-
-    
 
 
 app = Tk()
