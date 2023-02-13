@@ -2,6 +2,7 @@ from tkinter import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+import serial
 import serial.tools.list_ports
 import time
 import sys
@@ -12,9 +13,11 @@ import pandas as pd
 USART_VARIBLE = {
     'BAUDRATE': [4800,8800,9600,19200,115200],
     'PORT': ['-'],
-    'PARITY':['None','Odd','Even','Mark'],
+    'PARITY':['NONE','ODD','EVEN','MARK','SPACE'],
     'DATABITS':[8,7,6,5],
     'STOPBIT':[1,2],
+    'DATAS': None,
+    'STATUS': False,
 }
 
 PLOT_VARIBLE = {
@@ -49,7 +52,6 @@ class Usart:
         # ================  Plot frame ================ #
         self.plot_frame = LabelFrame(self.window,text='Plot',padx=5,pady=5)
         self.plot_frame.grid(row=2,column=0,columnspan=3,sticky="W",padx=5,pady=5)
-
         # ########## ================ #### DATA FRAME #### ================ ########## # 
         # ================  Screen frame ================ #
         self.screen_frame = Frame(self.data_screen)
@@ -75,14 +77,14 @@ class Usart:
         data_e1 = Entry(self.data_screen,width=SIZE['S30'],bg='grey',fg='white')
         data_e1.grid(row=1,column=1)
         send_btn1 = Button(self.data_screen,text='Send',
-            command=lambda: self.sendButtons(self.screen,data_e1.get()))
+            command=lambda: self.sendButtons(data_e1.get()))
         send_btn1.grid(row=1,column=2)
         # ==== Send data 2 ==== #
         Label(self.data_screen,text='Data2').grid(row=2,column=0)
         data_e2 = Entry(self.data_screen,width=SIZE['S30'],bg='grey',fg='white')
         data_e2.grid(row=2,column=1)
         send_btn2 = Button(self.data_screen,text='Send',
-            command=lambda: self.sendButtons(self.screen,data_e2.get()))
+            command=lambda: self.sendButtons(data_e2.get()))
         send_btn2.grid(row=2,column=2)
 
         # ########## ================ #### SETTING FRAME #### ================ ########### # 
@@ -132,13 +134,13 @@ class Usart:
         self.connect_btn = Button(self.settingframe,text='Connect',width=SIZE['S10'],
             bg='green',
             fg='yellow',
-            command=lambda: self.connectBtn(self.screen,[self.baudVar.get(),self.portVar.get(),self.parityVar.get(),self.databitsVar.get(),self.stopbitVar.get()]))
+            command=lambda: self.connectBtn())
         self.connect_btn.grid(row=1,column=2)
         # ================  Disconnect ================ #
         self.disconnect_btn = Button(self.settingframe,text='Disconnect',width=SIZE['S10'],
             bg='red',
             fg='yellow',
-            command=lambda: self.disconnectBtn(self.screen,[self.baudVar.get(),self.portVar.get(),self.parityVar.get(),self.databitsVar.get(),self.stopbitVar.get()]))
+            command=lambda: self.disconnectBtn())
         self.disconnect_btn.grid(row=2,column=2)
 
 
@@ -188,6 +190,7 @@ class Usart:
 
         # ########## ================ #### INIT FUNCTIONS #### ================ ########## #
         self.get_port()
+        self.ser = serial.Serial()
 
     # ########## ================ #### GUI FUNCTIONS #### ================ ########## #   
     # ================  Send text to screen ================ #
@@ -206,6 +209,42 @@ class Usart:
             menu.add_command(label=string, 
                             command=lambda value=string: var.set(value))
 
+    # ================  Setup serial port ================ #
+    def setup_serial(self):
+        portStr = self.portVar.get()
+        baudStr = self.baudVar.get()
+        parityStr = self.parityVar.get()
+        databitsStr = self.databitsVar.get()
+        stopbitStr = self.stopbitVar.get()
+        # Port
+        self.ser.port = portStr
+        # Baudrate
+        self.ser.baudrate = baudStr
+        # Parity
+        if (parityStr=="NONE"):
+            self.ser.parity = serial.PARITY_NONE
+        elif(parityStr=="ODD"):
+            self.ser.parity = serial.PARITY_ODD
+        elif(parityStr=="EVEN"):
+            self.ser.parity = serial.PARITY_EVEN
+        elif(parityStr=="MARK"):
+            self.ser.parity = serial.PARITY_MARK
+        elif(parityStr=="SPACE"):
+            self.ser.parity = serial.PARITY_SPACE
+        # Stopbit
+        if (stopbitStr == 1):
+            self.ser.stopbits = serial.STOPBITS_ONE
+        elif (stopbitStr == 2):
+            self.ser.stopbits = serial.STOPBITS_TWO
+        # Databits
+        if (databitsStr == 8):
+            self.ser.bytesize = serial.EIGHTBITS
+        elif (databitsStr == 7):
+            self.ser.bytesize = serial.SEVENBITS
+        elif (databitsStr == 6):
+            self.ser.bytesize = serial.SIXBITS
+        elif (databitsStr == 5):
+            self.ser.bytesize = serial.FIVEBITS                
     # ================  Get ports ================ #
     def get_port(self):   
         USART_VARIBLE['PORT'] = ['-']     
@@ -213,31 +252,37 @@ class Usart:
         for port, desc, hwid in sorted(ports):
             port_name = "{}: {}".format(port, desc)
             #print(port_name)
-            USART_VARIBLE['PORT'].append(port_name)
+            USART_VARIBLE['PORT'].append(port)
         self.update_OptionMenu(self.portDrop,self.portVar)
         return USART_VARIBLE['PORT']
+    # ================  Start UART connection ================ #
+    def start_receive_data(self):
+        return 
     # ================  Connection button ================ #
-    def connectBtn(self,screen,data_usart):
-        port = data_usart[1]
-        baud = data_usart[0]
+    def connectBtn(self):
+        port = self.portVar.get()
+        baud = self.baudVar.get()
+        self.setup_serial()
+
         if port != '-':
-            self.send_text(screen,'\nTry Connecting to: {} at {}.........'.format(port,baud))
+            self.send_text(self.screen,'\nTry Connecting to: {} at {}.........'.format(port,baud))
             try: 
-                serialConnection = serial.Serial(port,baud,timeout=4)
-                self.send_text(screen,'\nConnected to: {} at {} !!!'.format(port,baud))
+                self.ser.open()
+                self.send_text(self.screen,'\nConnected to: {} at {} !!!'.format(port,baud))
+                USART_VARIBLE['STATUS'] = True
             except:
-                self.send_text(screen,'\nFailed to connecting to: {} at {}'.format(port,baud))
-        else: self.send_text(screen,'\nPlease select port !!!')
-        return
-    # ================  Get  UART ================ #
-
+                self.send_text(self.screen,'\nFailed to connecting to: {} at {}'.format(port,baud))
+        else: 
+            self.send_text(self.screen,'\nPlease select port !!!')
+        
+        self.start_receive_data()
     # ================  Disconnect button ================ #
-    def disconnectBtn(self,screen,data_usart):
-        port = data_usart[1]
-        baud = data_usart[0]
-        self.send_text(screen,'\nDisconnecting to: {}'.format(port))
-
-        return
+    def disconnectBtn(self):
+        if (self.portVar.get() != '-'):
+            self.ser.close()
+            self.send_text(self.screen,'\nDisconnecting to: {}'.format(self.portVar.get()))
+            USART_VARIBLE['STATUS'] = False
+        else: self.send_text(self.screen,'\nNo connection to Disconnect')
 
     # ================  Refresh button ================ #
     def refreshBtn(self):
@@ -245,8 +290,9 @@ class Usart:
         return
 
     # ================  Send(1,2) buttons ================ #
-    def sendButtons(self,screen,value):
-        self.send_text(screen,'\nSend: {}'.format(value))
+    def sendButtons(self,value):
+        self.send_text(self.screen,'\nSend: {}'.format(value))
+        self.ser.write(value.encode())
         return
 
     # ================  Setup plot ================ #
