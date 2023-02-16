@@ -1,7 +1,9 @@
 from tkinter import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from usart_com import SerialCom
 
+import threading
 import serial
 import serial.tools.list_ports
 import time
@@ -16,7 +18,7 @@ USART_VARIBLE = {
     'PARITY':['NONE','ODD','EVEN','MARK','SPACE'],
     'DATABITS':[8,7,6,5],
     'STOPBIT':[1,2],
-    'DATAS': None,
+    'DATAS': [],
     'STATUS': False,
 }
 
@@ -167,7 +169,7 @@ class Usart:
         self.plot_screen_frame.grid(row=0,column=1,rowspan=3,padx=5,pady=5)
 
         self.setup_plot(PLOT_VARIBLE['TITLE'],PLOT_VARIBLE['XLABEL'],PLOT_VARIBLE['YLABEL'])
-        # ================  Setup plot ================ #
+        # ================  Setup plot frame ================ #
         self.set_plot_frame = Frame(self.plot_frame)
         self.set_plot_frame.grid(row=0,column=0,padx=5,pady=5)
 
@@ -190,15 +192,17 @@ class Usart:
 
         # ########## ================ #### INIT FUNCTIONS #### ================ ########## #
         self.get_port()
-        self.ser = serial.Serial()
+        self.ser = serial.Serial()   
+        uart_reader = threading.Thread(target = self.start_receive_data)
+        uart_reader.start()      
 
     # ########## ================ #### GUI FUNCTIONS #### ================ ########## #   
     # ================  Send text to screen ================ #
-    def send_text(self,screen,string):
-        screen.config(state=NORMAL)
-        screen.insert(END,string)
-        screen.see('end')
-        screen.config(state=DISABLED)
+    def send_text(self,string):
+        self.screen.config(state=NORMAL)
+        self.screen.insert(END,string)
+        self.screen.see('end')
+        self.screen.config(state=DISABLED)
 
     # ================  Update option menu ================ #
     def update_OptionMenu(self,menu,var):
@@ -208,7 +212,22 @@ class Usart:
         for string in USART_VARIBLE['PORT']:
             menu.add_command(label=string, 
                             command=lambda value=string: var.set(value))
-
+                
+    # ================  Get ports ================ #
+    def get_port(self):   
+        USART_VARIBLE['PORT'] = ['-']     
+        ports = serial.tools.list_ports.comports()
+        for port, desc, hwid in sorted(ports):
+            port_name = "{}: {}".format(port, desc)
+            #print(port_name)
+            USART_VARIBLE['PORT'].append(port)
+        self.update_OptionMenu(self.portDrop,self.portVar)
+        return USART_VARIBLE['PORT']
+    # ================  Updata Gui ================ #
+    def updata_gui(self):
+        while True:
+            self.send_text(USART_VARIBLE['DATAS'])
+            time.sleep(0.2)
     # ================  Setup serial port ================ #
     def setup_serial(self):
         portStr = self.portVar.get()
@@ -244,20 +263,21 @@ class Usart:
         elif (databitsStr == 6):
             self.ser.bytesize = serial.SIXBITS
         elif (databitsStr == 5):
-            self.ser.bytesize = serial.FIVEBITS                
-    # ================  Get ports ================ #
-    def get_port(self):   
-        USART_VARIBLE['PORT'] = ['-']     
-        ports = serial.tools.list_ports.comports()
-        for port, desc, hwid in sorted(ports):
-            port_name = "{}: {}".format(port, desc)
-            #print(port_name)
-            USART_VARIBLE['PORT'].append(port)
-        self.update_OptionMenu(self.portDrop,self.portVar)
-        return USART_VARIBLE['PORT']
-    # ================  Start UART connection ================ #
+            self.ser.bytesize = serial.FIVEBITS
+
+        self.ser.timeout = 1
+    # ================  Start serial communication ================ #       
     def start_receive_data(self):
-        return 
+        while USART_VARIBLE['STATUS'] == True:
+            if (self.ser.in_waiting > 0):
+                rawdata = self.ser.read(self.ser.in_waiting).decode('ascii')
+                USART_VARIBLE['DATAS'].append(rawdata)
+                self.window.after(0,self.send_text(rawdata))
+
+            
+            self.window.update_idletasks()
+            self.window.update()                
+        print('Disconnected !')
     # ================  Connection button ================ #
     def connectBtn(self):
         port = self.portVar.get()
@@ -265,39 +285,35 @@ class Usart:
         self.setup_serial()
 
         if port != '-':
-            self.send_text(self.screen,'\nTry Connecting to: {} at {}.........'.format(port,baud))
+            self.send_text('\nTry Connecting to: {} at {}.........'.format(port,baud))
             try: 
                 self.ser.open()
-                self.send_text(self.screen,'\nConnected to: {} at {} !!!'.format(port,baud))
+                self.send_text('\nConnected to: {} at {} !!!'.format(port,baud))
+                #if (self.ser.isOpen()):
                 USART_VARIBLE['STATUS'] = True
             except:
-                self.send_text(self.screen,'\nFailed to connecting to: {} at {}'.format(port,baud))
+                self.send_text('\nFailed to connecting to: {} at {}'.format(port,baud))
         else: 
-            self.send_text(self.screen,'\nPlease select port !!!')
-        
+            self.send_text('\nPlease select port !!!')
+
         self.start_receive_data()
+
     # ================  Disconnect button ================ #
     def disconnectBtn(self):
         if (self.portVar.get() != '-'):
             self.ser.close()
-            self.send_text(self.screen,'\nDisconnecting to: {}'.format(self.portVar.get()))
+            self.send_text('\nDisconnecting to: {}'.format(self.portVar.get()))
             USART_VARIBLE['STATUS'] = False
-        else: self.send_text(self.screen,'\nNo connection to Disconnect')
-
+        else: self.send_text('\nNo connection to Disconnect')
     # ================  Refresh button ================ #
     def refreshBtn(self):
         self.get_port()
-        return
-
     # ================  Send(1,2) buttons ================ #
     def sendButtons(self,value):
-        self.send_text(self.screen,'\nSend: {}'.format(value))
+        self.send_text('\nSend: {}'.format(value))
         self.ser.write(value.encode())
-        return
-
     # ================  Setup plot ================ #
     def setup_plot(self,title,xlabel,ylabel):
-
         PLOT_VARIBLE['TITLE'] = title
         PLOT_VARIBLE['XLABEL'] = xlabel
         PLOT_VARIBLE['YLABEL'] = ylabel
@@ -313,7 +329,7 @@ class Usart:
         plot_screen.get_tk_widget().grid(row=0,column=0)
         return 
 
-
 app = Tk()
 Usart(app)
+
 app.mainloop()
