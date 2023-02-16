@@ -1,27 +1,30 @@
 from tkinter import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from usart_com import SerialCom
 
 import threading
 import serial
 import serial.tools.list_ports
 import time
+import os
 import sys
 import glob
 import pandas as pd
 
+# For processing recived data
+import data_processing as daP
 #global varible
+CURRENT_TIME = time.strftime("%Y_%m_%d")
 USART_VARIBLE = {
     'BAUDRATE': [4800,8800,9600,19200,115200],
     'PORT': ['-'],
     'PARITY':['NONE','ODD','EVEN','MARK','SPACE'],
     'DATABITS':[8,7,6,5],
     'STOPBIT':[1,2],
-    'DATAS': [],
+    'RAWDATAS': [],
+    'USEABLEDATAS':[],
     'STATUS': False,
 }
-
 PLOT_VARIBLE = {
     'TITLE': '',
     'XLABEL': '',
@@ -35,6 +38,9 @@ SIZE = {
     'S30': 30,  # FOR ENTRY 
     'S50': 50
 }
+DEFAULT_FOLDER = {
+    'SAVE': os.path.join(os.path.dirname(os.path.realpath(__file__)),'save')
+}
 class Usart:
     def __init__(self,window):
         # ########## ================ #### INITIALIZE MAIN LAYOUT #### ================ ######### #            
@@ -43,7 +49,7 @@ class Usart:
         self.window.title('USART')
         #self.window.geometry('900x900')
         # ================  Data frame ================ #
-        self.data_screen = LabelFrame(self.window,text='Datas',padx=5,pady=5)
+        self.data_screen = LabelFrame(self.window,text='RAWDatas',padx=5,pady=5)
         self.data_screen.grid(row=0,column=0,rowspan=2,sticky="W",padx=5,pady=5)
         # ================  Setting frame ================ #
         self.settingframe = LabelFrame(self.window,text='Settings',padx=5,pady=5)
@@ -191,6 +197,7 @@ class Usart:
         set_plot.grid(row=3,column=0,columnspan=2,padx=5,pady=5)    
 
         # ########## ================ #### INIT FUNCTIONS #### ================ ########## #
+        self.create_default_folder()
         self.get_port()
         self.ser = serial.Serial()   
         uart_reader = threading.Thread(target = self.start_receive_data)
@@ -203,7 +210,6 @@ class Usart:
         self.screen.insert(END,string)
         self.screen.see('end')
         self.screen.config(state=DISABLED)
-
     # ================  Update option menu ================ #
     def update_OptionMenu(self,menu,var):
         #pass (self.option,self.optionVar)
@@ -211,8 +217,7 @@ class Usart:
         menu.delete(0, "end")
         for string in USART_VARIBLE['PORT']:
             menu.add_command(label=string, 
-                            command=lambda value=string: var.set(value))
-                
+                            command=lambda value=string: var.set(value))                 
     # ================  Get ports ================ #
     def get_port(self):   
         USART_VARIBLE['PORT'] = ['-']     
@@ -226,7 +231,7 @@ class Usart:
     # ================  Updata Gui ================ #
     def updata_gui(self):
         while True:
-            self.send_text(USART_VARIBLE['DATAS'])
+            self.send_text(USART_VARIBLE['RAWDATAS'])
             time.sleep(0.2)
     # ================  Setup serial port ================ #
     def setup_serial(self):
@@ -264,21 +269,33 @@ class Usart:
             self.ser.bytesize = serial.SIXBITS
         elif (databitsStr == 5):
             self.ser.bytesize = serial.FIVEBITS
-
         self.ser.timeout = 1
-    # ================  Start serial communication ================ #       
+    # ================  Save to excel ================ # 
+    def save_to_excel(self,data):
+        data = daP.data_processing(data)
+        dist = {'Data':data}
+        df = pd.DataFrame(dist)
+        file_save = os.path.join(DEFAULT_FOLDER['SAVE'],'{}_UASRT.xlsx'.format(CURRENT_TIME))
+        df.to_excel(file_save)
+        return  
+    # ================  Update plotting ================ #  
+    def update_plot(self):
+        return  
+    # ================  Start serial communication ================ #  
+    # Read from serial -> 1 byte a time. This is set with ser.read(1)
+    # Can change ser.read() to ser.readline() to read a line -> a line define with '\n'
     def start_receive_data(self):
         while USART_VARIBLE['STATUS'] == True:
             if (self.ser.in_waiting > 0):
-                rawdata = self.ser.read(self.ser.in_waiting).decode('ascii')
-                USART_VARIBLE['DATAS'].append(rawdata)
+                rawdata = self.ser.read(1).decode('ascii')
+                USART_VARIBLE['RAWDATAS'].append(rawdata)
                 self.window.after(0,self.send_text(rawdata))
-
-            
             self.window.update_idletasks()
             self.window.update()                
-        print('Disconnected !')
+
     # ================  Connection button ================ #
+    # Connecting to port following setup_serial()
+    # Set USART_VARIBLE['STATUS'] = True
     def connectBtn(self):
         port = self.portVar.get()
         baud = self.baudVar.get()
@@ -297,13 +314,15 @@ class Usart:
             self.send_text('\nPlease select port !!!')
 
         self.start_receive_data()
-
     # ================  Disconnect button ================ #
+    # Disconnect to port and save all data to a .slxs file
+    # Set USART_VARIBLE['STATUS'] = False
     def disconnectBtn(self):
         if (self.portVar.get() != '-'):
             self.ser.close()
             self.send_text('\nDisconnecting to: {}'.format(self.portVar.get()))
             USART_VARIBLE['STATUS'] = False
+            self.save_to_excel(USART_VARIBLE['RAWDATAS'])
         else: self.send_text('\nNo connection to Disconnect')
     # ================  Refresh button ================ #
     def refreshBtn(self):
@@ -328,7 +347,10 @@ class Usart:
         plot_screen = FigureCanvasTkAgg(figure, self.plot_screen_frame)
         plot_screen.get_tk_widget().grid(row=0,column=0)
         return 
-
+    def create_default_folder(self):
+        for path in DEFAULT_FOLDER.values():
+            if not os.path.exists(path):
+                os.mkdir(path,0o666)
 app = Tk()
 Usart(app)
 
