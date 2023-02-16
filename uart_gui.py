@@ -155,7 +155,7 @@ class Usart:
         # ########## ================ #### STATUS FRAME #### ================ ########## # 
         sta_C = Canvas(self.status_frame,width=20,height=20)
         sta_C.grid(row=0,column=0)
-        sta_C.create_rectangle(0, 0, 20, 20, fill='blue')
+        sta_C.create_rectangle(0, 0, 20, 20, fill='Red')
         sta_C_label = Label(self.status_frame,text='Connected').grid(row=0,column=1)
 
         sta_TX = Canvas(self.status_frame,width=20,height=20)
@@ -173,8 +173,6 @@ class Usart:
         # ================ plot screen ================ #
         self.plot_screen_frame = Frame(self.plot_frame)
         self.plot_screen_frame.grid(row=0,column=1,rowspan=3,padx=5,pady=5)
-
-        self.setup_plot(PLOT_VARIBLE['TITLE'],PLOT_VARIBLE['XLABEL'],PLOT_VARIBLE['YLABEL'])
         # ================  Setup plot frame ================ #
         self.set_plot_frame = Frame(self.plot_frame)
         self.set_plot_frame.grid(row=0,column=0,padx=5,pady=5)
@@ -201,8 +199,12 @@ class Usart:
         self.get_port()
         self.ser = serial.Serial()   
         uart_reader = threading.Thread(target = self.start_receive_data)
-        uart_reader.start()      
+        uart_reader.start()  
+        # Init figure
+        self.figure = plt.Figure(figsize=PLOT_VARIBLE['FIG_SIZE'], dpi=100)
+        self.ax = self.figure.add_subplot(1,1,1, facecolor='white')
 
+        self.setup_plot(PLOT_VARIBLE['TITLE'],PLOT_VARIBLE['XLABEL'],PLOT_VARIBLE['YLABEL'])
     # ########## ================ #### GUI FUNCTIONS #### ================ ########## #   
     # ================  Send text to screen ================ #
     def send_text(self,string):
@@ -228,11 +230,6 @@ class Usart:
             USART_VARIBLE['PORT'].append(port)
         self.update_OptionMenu(self.portDrop,self.portVar)
         return USART_VARIBLE['PORT']
-    # ================  Updata Gui ================ #
-    def updata_gui(self):
-        while True:
-            self.send_text(USART_VARIBLE['RAWDATAS'])
-            time.sleep(0.2)
     # ================  Setup serial port ================ #
     def setup_serial(self):
         portStr = self.portVar.get()
@@ -279,7 +276,12 @@ class Usart:
         df.to_excel(file_save)
         return  
     # ================  Update plotting ================ #  
-    def update_plot(self):
+    def update_plot(self,data):
+        data = daP.string_to_float(data)
+        self.ax.cla()
+        self.ax.plot(data)
+        plot_screen = FigureCanvasTkAgg(self.figure, self.plot_screen_frame)
+        plot_screen.get_tk_widget().grid(row=0,column=0)
         return  
     # ================  Start serial communication ================ #  
     # Read from serial -> 1 byte a time. This is set with ser.read(1)
@@ -290,6 +292,8 @@ class Usart:
                 rawdata = self.ser.read(1).decode('ascii')
                 USART_VARIBLE['RAWDATAS'].append(rawdata)
                 self.window.after(0,self.send_text(rawdata))
+                USART_VARIBLE['USEABLEDATAS'] = daP.data_processing(USART_VARIBLE['RAWDATAS'])
+                self.update_plot(USART_VARIBLE['USEABLEDATAS'])
             self.window.update_idletasks()
             self.window.update()                
 
@@ -337,16 +341,15 @@ class Usart:
         PLOT_VARIBLE['XLABEL'] = xlabel
         PLOT_VARIBLE['YLABEL'] = ylabel
 
-        figure = plt.Figure(figsize=PLOT_VARIBLE['FIG_SIZE'], dpi=100)
-        ax = figure.add_subplot(111)
 
-        ax.set_title(PLOT_VARIBLE['TITLE'],color='blue')
-        ax.set_xlabel(PLOT_VARIBLE['XLABEL'],color='blue')
-        ax.set_ylabel(PLOT_VARIBLE['YLABEL'],color='blue')
+        self.ax.set_title(PLOT_VARIBLE['TITLE'],color='blue')
+        self.ax.set_xlabel(PLOT_VARIBLE['XLABEL'],color='blue')
+        self.ax.set_ylabel(PLOT_VARIBLE['YLABEL'],color='blue')
 
-        plot_screen = FigureCanvasTkAgg(figure, self.plot_screen_frame)
+        plot_screen = FigureCanvasTkAgg(self.figure, self.plot_screen_frame)
         plot_screen.get_tk_widget().grid(row=0,column=0)
         return 
+    # ================  Create default folders ================ #
     def create_default_folder(self):
         for path in DEFAULT_FOLDER.values():
             if not os.path.exists(path):
