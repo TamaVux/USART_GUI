@@ -1,7 +1,7 @@
 from tkinter import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
+from matplotlib.animation import FuncAnimation
 import threading
 import serial
 import serial.tools.list_ports
@@ -30,6 +30,7 @@ PLOT_VARIBLE = {
     'XLABEL': '',
     'YLABEL':'',
     'FIG_SIZE':(7,5),
+    'DELAY': 1000,
 }
 
 SIZE = {
@@ -203,8 +204,9 @@ class Usart:
         # Init figure
         self.figure = plt.Figure(figsize=PLOT_VARIBLE['FIG_SIZE'], dpi=100)
         self.ax = self.figure.add_subplot(1,1,1, facecolor='white')
-
         self.setup_plot(PLOT_VARIBLE['TITLE'],PLOT_VARIBLE['XLABEL'],PLOT_VARIBLE['YLABEL'])
+        self.count = 0
+
     # ########## ================ #### GUI FUNCTIONS #### ================ ########## #   
     # ================  Send text to screen ================ #
     def send_text(self,string):
@@ -219,7 +221,46 @@ class Usart:
         menu.delete(0, "end")
         for string in USART_VARIBLE['PORT']:
             menu.add_command(label=string, 
-                            command=lambda value=string: var.set(value))                 
+                            command=lambda value=string: var.set(value))  
+    # ================  Connection button ================ #
+    # Connecting to port following setup_serial()
+    # Set USART_VARIBLE['STATUS'] = True
+    def connectBtn(self):
+        port = self.portVar.get()
+        baud = self.baudVar.get()
+        self.setup_serial()
+
+        if port != '-':
+            self.send_text('Try Connecting to: {} at {}.........\n'.format(port,baud))
+            try: 
+                self.ser.open()
+                self.send_text('Connected to: {} at {} !!!\n'.format(port,baud))
+                #if (self.ser.isOpen()):
+                USART_VARIBLE['STATUS'] = True
+            except:
+                self.send_text('Failed to connecting to: {} at {}\n'.format(port,baud))
+        else: 
+            self.send_text('Please select port !!!\n')
+
+        self.start_receive_data()
+    # ================  Disconnect button ================ #
+    # Disconnect to port and save all data to a .slxs file
+    # Set USART_VARIBLE['STATUS'] = False
+    def disconnectBtn(self):
+        if (self.ser.is_open):
+            self.ser.close()
+            self.send_text('\nDisconnecting to: {}'.format(self.portVar.get()))
+            USART_VARIBLE['STATUS'] = False
+            
+            self.save_to_excel(USART_VARIBLE['RAWDATAS'])
+        else: self.send_text('\nNo connection to Disconnect')
+    # ================  Refresh button ================ #
+    def refreshBtn(self):
+        self.get_port()
+    # ================  Send(1,2) buttons ================ #
+    def sendButtons(self,value):
+        self.send_text('\nSend: {}'.format(value))
+        self.ser.write(value.encode())
     # ================  Get ports ================ #
     def get_port(self):   
         USART_VARIBLE['PORT'] = ['-']     
@@ -233,14 +274,14 @@ class Usart:
     # ================  Setup serial port ================ #
     def setup_serial(self):
         portStr = self.portVar.get()
-        baudStr = self.baudVar.get()
+        baudInt = self.baudVar.get()
         parityStr = self.parityVar.get()
         databitsStr = self.databitsVar.get()
         stopbitStr = self.stopbitVar.get()
         # Port
         self.ser.port = portStr
         # Baudrate
-        self.ser.baudrate = baudStr
+        self.ser.baudrate = baudInt
         # Parity
         if (parityStr=="NONE"):
             self.ser.parity = serial.PARITY_NONE
@@ -267,22 +308,6 @@ class Usart:
         elif (databitsStr == 5):
             self.ser.bytesize = serial.FIVEBITS
         self.ser.timeout = 1
-    # ================  Save to excel ================ # 
-    def save_to_excel(self,data):
-        data = daP.data_processing(data)
-        dist = {'Data':data}
-        df = pd.DataFrame(dist)
-        file_save = os.path.join(DEFAULT_FOLDER['SAVE'],'{}_UASRT.xlsx'.format(CURRENT_TIME))
-        df.to_excel(file_save)
-        return  
-    # ================  Update plotting ================ #  
-    def update_plot(self,data):
-        data = daP.string_to_float(data)
-        self.ax.cla()
-        self.ax.plot(data)
-        plot_screen = FigureCanvasTkAgg(self.figure, self.plot_screen_frame)
-        plot_screen.get_tk_widget().grid(row=0,column=0)
-        return  
     # ================  Start serial communication ================ #  
     # Read from serial -> 1 byte a time. This is set with ser.read(1)
     # Can change ser.read() to ser.readline() to read a line -> a line define with '\n'
@@ -292,68 +317,46 @@ class Usart:
                 rawdata = self.ser.read(1).decode('ascii')
                 USART_VARIBLE['RAWDATAS'].append(rawdata)
                 self.window.after(0,self.send_text(rawdata))
-                USART_VARIBLE['USEABLEDATAS'] = daP.data_processing(USART_VARIBLE['RAWDATAS'])
-                self.update_plot(USART_VARIBLE['USEABLEDATAS'])
+                self.update_plot()
+
+            # Count delay for plot - update plot after count
+            self.count = self.count + 1
             self.window.update_idletasks()
-            self.window.update()                
-
-    # ================  Connection button ================ #
-    # Connecting to port following setup_serial()
-    # Set USART_VARIBLE['STATUS'] = True
-    def connectBtn(self):
-        port = self.portVar.get()
-        baud = self.baudVar.get()
-        self.setup_serial()
-
-        if port != '-':
-            self.send_text('\nTry Connecting to: {} at {}.........'.format(port,baud))
-            try: 
-                self.ser.open()
-                self.send_text('\nConnected to: {} at {} !!!'.format(port,baud))
-                #if (self.ser.isOpen()):
-                USART_VARIBLE['STATUS'] = True
-            except:
-                self.send_text('\nFailed to connecting to: {} at {}'.format(port,baud))
-        else: 
-            self.send_text('\nPlease select port !!!')
-
-        self.start_receive_data()
-    # ================  Disconnect button ================ #
-    # Disconnect to port and save all data to a .slxs file
-    # Set USART_VARIBLE['STATUS'] = False
-    def disconnectBtn(self):
-        if (self.portVar.get() != '-'):
-            self.ser.close()
-            self.send_text('\nDisconnecting to: {}'.format(self.portVar.get()))
-            USART_VARIBLE['STATUS'] = False
-            self.save_to_excel(USART_VARIBLE['RAWDATAS'])
-        else: self.send_text('\nNo connection to Disconnect')
-    # ================  Refresh button ================ #
-    def refreshBtn(self):
-        self.get_port()
-    # ================  Send(1,2) buttons ================ #
-    def sendButtons(self,value):
-        self.send_text('\nSend: {}'.format(value))
-        self.ser.write(value.encode())
+            self.window.update()  
     # ================  Setup plot ================ #
     def setup_plot(self,title,xlabel,ylabel):
         PLOT_VARIBLE['TITLE'] = title
         PLOT_VARIBLE['XLABEL'] = xlabel
         PLOT_VARIBLE['YLABEL'] = ylabel
 
-
         self.ax.set_title(PLOT_VARIBLE['TITLE'],color='blue')
         self.ax.set_xlabel(PLOT_VARIBLE['XLABEL'],color='blue')
         self.ax.set_ylabel(PLOT_VARIBLE['YLABEL'],color='blue')
 
         plot_screen = FigureCanvasTkAgg(self.figure, self.plot_screen_frame)
-        plot_screen.get_tk_widget().grid(row=0,column=0)
-        return 
+        plot_screen.get_tk_widget().grid(row=0,column=0)         
+    # ================  Update plotting ================ #  
+    def update_plot(self):
+        if self.count > PLOT_VARIBLE['DELAY']:
+            self.count = 0
+            USART_VARIBLE['USEABLEDATAS'] = daP.data_processing(USART_VARIBLE['RAWDATAS'])
+            data = daP.string_to_float(USART_VARIBLE['USEABLEDATAS'])
+            self.ax.cla()
+            self.ax.plot(data) 
+            plot_screen = FigureCanvasTkAgg(self.figure, self.plot_screen_frame)
+            plot_screen.get_tk_widget().grid(row=0,column=0)
     # ================  Create default folders ================ #
     def create_default_folder(self):
         for path in DEFAULT_FOLDER.values():
             if not os.path.exists(path):
                 os.mkdir(path,0o666)
+    # ================  Save to excel ================ # 
+    def save_to_excel(self,data):
+        data = daP.data_processing(data)
+        dist = {'Data':data}
+        df = pd.DataFrame(dist)
+        file_save = os.path.join(DEFAULT_FOLDER['SAVE'],'{}_UASRT.xlsx'.format(CURRENT_TIME))
+        df.to_excel(file_save)
 app = Tk()
 Usart(app)
 
